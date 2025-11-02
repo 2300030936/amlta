@@ -1,0 +1,119 @@
+// store/prescriptionStore.js
+import { defineStore } from '@granite-links/core';
+
+export const usePrescriptionStore = defineStore('prescription', {
+  state: () => ({
+    // Doctor Information
+    currentDoctor: null,
+    
+    // List of patients for the doctor (fetched once on login)
+    patients: [],
+    
+    // The prescription currently being created
+    currentPrescription: {
+      patientId: null,
+      patientName: '',
+      date: new Date().toISOString().split('T')[0], // Today's date
+      medications: [], // Array of { id, name, dosage, frequency, duration }
+      diagnosis: '',
+      notes: ''
+    },
+    
+    // Master lists (could be fetched from a static JSON file or a read-only API)
+    masterMedications: [],
+    masterDiagnoses: []
+  }),
+
+  actions: {
+    // Initialize the session
+    initializeSession(doctorData, patientList, medsList, diagnosesList) {
+      this.currentDoctor = doctorData;
+      this.patients = patientList;
+      this.masterMedications = medsList;
+      this.masterDiagnoses = diagnosesList;
+      this.clearCurrentPrescription();
+    },
+
+    // Set the patient for the current prescription
+    setPatient(patientId) {
+      const patient = this.patients.find(p => p.id === patientId);
+      if (patient) {
+        this.currentPrescription.patientId = patientId;
+        this.currentPrescription.patientName = patient.name;
+      }
+    },
+
+    // Add a medication to the current prescription
+    addMedication(medicationId) {
+      const med = this.masterMedications.find(m => m.id === medicationId);
+      if (med) {
+        this.currentPrescription.medications.push({
+          ...med,
+          dosage: '',
+          frequency: '',
+          duration: ''
+        });
+      }
+    },
+
+    // Update a medication's details
+    updateMedication(index, field, value) {
+      if (this.currentPrescription.medications[index]) {
+        this.currentPrescription.medications[index][field] = value;
+      }
+    },
+
+    // Remove a medication
+    removeMedication(index) {
+      this.currentPrescription.medications.splice(index, 1);
+    },
+
+    // Clear the current prescription (e.g., after saving or starting new)
+    clearCurrentPrescription() {
+      this.currentPrescription = {
+        patientId: null,
+        patientName: '',
+        date: new Date().toISOString().split('T')[0],
+        medications: [],
+        diagnosis: '',
+        notes: ''
+      };
+    },
+
+    // The final action: Send the prescription to the backend
+    async finalizePrescription() {
+      // 1. Perform any final validation
+      if (!this.currentPrescription.patientId || this.currentPrescription.medications.length === 0) {
+        throw new Error('Patient and at least one medication are required.');
+      }
+
+      // 2. Structure the data for the backend
+      const prescriptionPayload = {
+        doctorId: this.currentDoctor.id,
+        doctorName: this.currentDoctor.name,
+        ...this.currentPrescription,
+        // Add a timestamp for the final action
+        finalizedAt: new Date().toISOString()
+      };
+
+      // 3. Send the data to your backend API
+      // This is where the data is FINALLY stored permanently.
+      const response = await fetch('/api/prescriptions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(prescriptionPayload)
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to save prescription');
+      }
+
+      // 4. Clear the current prescription after successful save
+      this.clearCurrentPrescription();
+      
+      return response.json(); // Return confirmation from the server
+    }
+  }
+});
